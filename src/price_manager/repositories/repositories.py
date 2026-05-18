@@ -1,14 +1,10 @@
-
-import abc
-import csv
 import datetime
-import os
-from typing import Generic, List, Optional, TypeVar
+from typing import List, Optional
 
+from price_manager.database.connection import obtener_sesion
 from price_manager.entities.entities import (
   Categoria,
   CotizacionDolar,
-  EntidadBase,
   Moneda,
   Precio,
   Producto,
@@ -16,438 +12,369 @@ from price_manager.entities.entities import (
   Stock,
   TipoCotizacion,
 )
+from price_manager.models.models import (
+  CategoriaModel,
+  CotizacionDolarModel,
+  MonedaModel,
+  ProductoModel,
+  ProveedorModel,
+  StockModel,
+  TipoCotizacionModel,
+)
 
 
-T = TypeVar("T", bound=EntidadBase)
+class RepositorioCategoria:
+  """Repositorio SQLAlchemy para categorías."""
 
+  def crear(self, categoria: Categoria) -> Categoria:
+    with obtener_sesion() as session:
+      model = CategoriaModel(id=categoria.id, nombre=categoria.nombre)
+      session.add(model)
+    return categoria
 
-class IRepositorio(abc.ABC, Generic[T]):
-  """Define las operaciones CRUD básicas para entidades con ID."""
+  def leer_por_id(self, id: int) -> Optional[Categoria]:
+    with obtener_sesion() as session:
+      model = session.get(CategoriaModel, id)
+      if model is None:
+        return None
+      return Categoria(id=model.id, nombre=model.nombre)
 
-  @abc.abstractmethod
-  def crear(self, entidad: T) -> T:
-    pass
+  def leer_todos(self) -> List[Categoria]:
+    with obtener_sesion() as session:
+      modelos = session.query(CategoriaModel).all()
+      return [Categoria(id=m.id, nombre=m.nombre) for m in modelos]
 
-  @abc.abstractmethod
-  def leer_por_id(self, id: int) -> Optional[T]:
-    pass
-
-  @abc.abstractmethod
-  def leer_todos(self) -> List[T]:
-    pass
-
-  @abc.abstractmethod
-  def actualizar(self, entidad: T) -> T:
-    pass
-
-  @abc.abstractmethod
-  def eliminar(self, id: int) -> bool:
-    pass
-
-
-class RepositorioCsvBase(IRepositorio[T]):
-  """Implementa operaciones CRUD comunes usando archivos CSV."""
-
-  ruta_base = "/content/price_manager/src/price_manager/migrations/csv"
-
-  def __init__(self, archivo: str, campos: List[str]):
-    self.archivo = os.path.join(self.ruta_base, archivo)
-    self.campos = campos
-    os.makedirs(self.ruta_base, exist_ok=True)
-
-  def leer_archivo(self) -> List[dict]:
-    try:
-      with open(self.archivo, mode="r", newline="", encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-    except FileNotFoundError:
-      return []
-
-  def grabar_archivo(self, registros: List[dict]) -> None:
-    with open(self.archivo, mode="w", newline="", encoding="utf-8") as f:
-      writer = csv.DictWriter(f, fieldnames=self.campos)
-      writer.writeheader()
-      writer.writerows(registros)
-
-  @abc.abstractmethod
-  def convertir_a_dict(self, entidad: T) -> dict:
-    pass
-
-  @abc.abstractmethod
-  def convertir_a_entidad(self, registro: dict) -> T:
-    pass
-
-  def crear(self, entidad: T) -> T:
-    registros = self.leer_archivo()
-
-    for registro in registros:
-      if int(registro["id"]) == entidad.id:
-        raise ValueError("Ya existe una entidad con ese ID.")
-
-    registros.append(self.convertir_a_dict(entidad))
-    self.grabar_archivo(registros)
-
-    return entidad
-
-  def leer_por_id(self, id: int) -> Optional[T]:
-    registros = self.leer_archivo()
-
-    for registro in registros:
-      if int(registro["id"]) == id:
-        return self.convertir_a_entidad(registro)
-
-    return None
-
-  def leer_todos(self) -> List[T]:
-    return [
-      self.convertir_a_entidad(registro)
-      for registro in self.leer_archivo()
-    ]
-
-  def actualizar(self, entidad: T) -> T:
-    registros = self.leer_archivo()
-    encontrado = False
-
-    for indice, registro in enumerate(registros):
-      if int(registro["id"]) == entidad.id:
-        registros[indice] = self.convertir_a_dict(entidad)
-        encontrado = True
-        break
-
-    if not encontrado:
-      raise ValueError("No existe una entidad con ese ID.")
-
-    self.grabar_archivo(registros)
-
-    return entidad
+  def actualizar(self, categoria: Categoria) -> Categoria:
+    with obtener_sesion() as session:
+      model = session.get(CategoriaModel, categoria.id)
+      if model is None:
+        raise ValueError("No existe una entidad con ese ID.")
+      model.nombre = categoria.nombre
+    return categoria
 
   def eliminar(self, id: int) -> bool:
-    registros = self.leer_archivo()
-    filtrados = [
-      registro for registro in registros
-      if int(registro["id"]) != id
-    ]
-
-    if len(registros) == len(filtrados):
-      return False
-
-    self.grabar_archivo(filtrados)
-
-    return True
+    with obtener_sesion() as session:
+      model = session.get(CategoriaModel, id)
+      if model is None:
+        return False
+      session.delete(model)
+      return True
 
 
-class RepositorioCategoria(RepositorioCsvBase[Categoria]):
-  """Repositorio CSV para categorías."""
+class RepositorioProveedor:
+  """Repositorio SQLAlchemy para proveedores."""
 
-  def __init__(self):
-    super().__init__("categorias.csv", ["id", "nombre"])
+  def crear(self, proveedor: Proveedor) -> Proveedor:
+    with obtener_sesion() as session:
+      model = ProveedorModel(
+        id=proveedor.id,
+        nombre=proveedor.nombre,
+        contacto=proveedor.contacto,
+      )
+      session.add(model)
+    return proveedor
 
-  def convertir_a_dict(self, categoria: Categoria) -> dict:
-    return {
-      "id": categoria.id,
-      "nombre": categoria.nombre,
-    }
+  def leer_por_id(self, id: int) -> Optional[Proveedor]:
+    with obtener_sesion() as session:
+      model = session.get(ProveedorModel, id)
+      if model is None:
+        return None
+      return Proveedor(
+        id=model.id,
+        nombre=model.nombre,
+        contacto=model.contacto,
+      )
 
-  def convertir_a_entidad(self, registro: dict) -> Categoria:
-    return Categoria(
-      id=int(registro["id"]),
-      nombre=registro["nombre"],
-    )
+  def leer_todos(self) -> List[Proveedor]:
+    with obtener_sesion() as session:
+      modelos = session.query(ProveedorModel).all()
+      return [
+        Proveedor(id=m.id, nombre=m.nombre, contacto=m.contacto)
+        for m in modelos
+      ]
 
+  def actualizar(self, proveedor: Proveedor) -> Proveedor:
+    with obtener_sesion() as session:
+      model = session.get(ProveedorModel, proveedor.id)
+      if model is None:
+        raise ValueError("No existe una entidad con ese ID.")
+      model.nombre = proveedor.nombre
+      model.contacto = proveedor.contacto
+    return proveedor
 
-class RepositorioProveedor(RepositorioCsvBase[Proveedor]):
-  """Repositorio CSV para proveedores."""
-
-  def __init__(self):
-    super().__init__("proveedores.csv", ["id", "nombre", "contacto"])
-
-  def convertir_a_dict(self, proveedor: Proveedor) -> dict:
-    return {
-      "id": proveedor.id,
-      "nombre": proveedor.nombre,
-      "contacto": proveedor.contacto,
-    }
-
-  def convertir_a_entidad(self, registro: dict) -> Proveedor:
-    return Proveedor(
-      id=int(registro["id"]),
-      nombre=registro["nombre"],
-      contacto=registro["contacto"],
-    )
-
-
-class RepositorioMoneda(RepositorioCsvBase[Moneda]):
-  """Repositorio CSV para monedas."""
-
-  def __init__(self):
-    super().__init__("monedas.csv", ["id", "nombre"])
-
-  def convertir_a_dict(self, moneda: Moneda) -> dict:
-    return {
-      "id": moneda.id,
-      "nombre": moneda.nombre,
-    }
-
-  def convertir_a_entidad(self, registro: dict) -> Moneda:
-    return Moneda(
-      id=int(registro["id"]),
-      nombre=registro["nombre"],
-    )
+  def eliminar(self, id: int) -> bool:
+    with obtener_sesion() as session:
+      model = session.get(ProveedorModel, id)
+      if model is None:
+        return False
+      session.delete(model)
+      return True
 
 
-class RepositorioTipoCotizacion(
-  RepositorioCsvBase[TipoCotizacion]
-):
-  """Repositorio CSV para tipos de cotización."""
+class RepositorioMoneda:
+  """Repositorio SQLAlchemy para monedas."""
 
-  def __init__(self):
-    super().__init__("tipos_cotizacion.csv", ["id", "nombre"])
+  def crear(self, moneda: Moneda) -> Moneda:
+    with obtener_sesion() as session:
+      model = MonedaModel(id=moneda.id, nombre=moneda.nombre)
+      session.add(model)
+    return moneda
 
-  def convertir_a_dict(self, tipo: TipoCotizacion) -> dict:
-    return {
-      "id": tipo.id,
-      "nombre": tipo.nombre,
-    }
+  def leer_por_id(self, id: int) -> Optional[Moneda]:
+    with obtener_sesion() as session:
+      model = session.get(MonedaModel, id)
+      if model is None:
+        return None
+      return Moneda(id=model.id, nombre=model.nombre)
 
-  def convertir_a_entidad(self, registro: dict) -> TipoCotizacion:
-    return TipoCotizacion(
-      id=int(registro["id"]),
-      nombre=registro["nombre"],
-    )
+  def leer_todos(self) -> List[Moneda]:
+    with obtener_sesion() as session:
+      modelos = session.query(MonedaModel).all()
+      return [Moneda(id=m.id, nombre=m.nombre) for m in modelos]
+
+  def actualizar(self, moneda: Moneda) -> Moneda:
+    with obtener_sesion() as session:
+      model = session.get(MonedaModel, moneda.id)
+      if model is None:
+        raise ValueError("No existe una entidad con ese ID.")
+      model.nombre = moneda.nombre
+    return moneda
+
+  def eliminar(self, id: int) -> bool:
+    with obtener_sesion() as session:
+      model = session.get(MonedaModel, id)
+      if model is None:
+        return False
+      session.delete(model)
+      return True
 
 
-class RepositorioProducto(RepositorioCsvBase[Producto]):
-  """Repositorio CSV para productos."""
+class RepositorioTipoCotizacion:
+  """Repositorio SQLAlchemy para tipos de cotización."""
 
-  def __init__(self):
-    super().__init__(
-      "productos.csv",
-      [
-        "id",
-        "nombre",
-        "descripcion",
-        "precio_valor",
-        "moneda_id",
-        "moneda_nombre",
-        "precio_fecha",
-        "categoria_id",
-        "categoria_nombre",
-        "proveedor_id",
-        "proveedor_nombre",
-        "proveedor_contacto",
-      ],
-    )
+  def crear(self, tipo: TipoCotizacion) -> TipoCotizacion:
+    with obtener_sesion() as session:
+      model = TipoCotizacionModel(id=tipo.id, nombre=tipo.nombre)
+      session.add(model)
+    return tipo
 
-  def convertir_a_dict(self, producto: Producto) -> dict:
-    return {
-      "id": producto.id,
-      "nombre": producto.nombre,
-      "descripcion": producto.descripcion,
-      "precio_valor": producto.precio.valor,
-      "moneda_id": producto.precio.moneda.id,
-      "moneda_nombre": producto.precio.moneda.nombre,
-      "precio_fecha": producto.precio.fecha.isoformat(),
-      "categoria_id": producto.categoria.id,
-      "categoria_nombre": producto.categoria.nombre,
-      "proveedor_id": producto.proveedor.id,
-      "proveedor_nombre": producto.proveedor.nombre,
-      "proveedor_contacto": producto.proveedor.contacto,
-    }
+  def leer_por_id(self, id: int) -> Optional[TipoCotizacion]:
+    with obtener_sesion() as session:
+      model = session.get(TipoCotizacionModel, id)
+      if model is None:
+        return None
+      return TipoCotizacion(id=model.id, nombre=model.nombre)
 
-  def convertir_a_entidad(self, registro: dict) -> Producto:
-    moneda = Moneda(
-      id=int(registro["moneda_id"]),
-      nombre=registro["moneda_nombre"],
-    )
+  def leer_todos(self) -> List[TipoCotizacion]:
+    with obtener_sesion() as session:
+      modelos = session.query(TipoCotizacionModel).all()
+      return [TipoCotizacion(id=m.id, nombre=m.nombre) for m in modelos]
+
+  def actualizar(self, tipo: TipoCotizacion) -> TipoCotizacion:
+    with obtener_sesion() as session:
+      model = session.get(TipoCotizacionModel, tipo.id)
+      if model is None:
+        raise ValueError("No existe una entidad con ese ID.")
+      model.nombre = tipo.nombre
+    return tipo
+
+  def eliminar(self, id: int) -> bool:
+    with obtener_sesion() as session:
+      model = session.get(TipoCotizacionModel, id)
+      if model is None:
+        return False
+      session.delete(model)
+      return True
+
+
+class RepositorioProducto:
+  """Repositorio SQLAlchemy para productos."""
+
+  def crear(self, producto: Producto) -> Producto:
+    with obtener_sesion() as session:
+      model = ProductoModel(
+        id=producto.id,
+        nombre=producto.nombre,
+        descripcion=producto.descripcion,
+        precio_valor=producto.precio.valor,
+        precio_fecha=producto.precio.fecha,
+        moneda_id=producto.precio.moneda.id,
+        categoria_id=producto.categoria.id,
+        proveedor_id=producto.proveedor.id,
+      )
+      session.add(model)
+    return producto
+
+  def _convertir_a_entidad(
+    self,
+    producto: ProductoModel,
+    moneda: MonedaModel,
+    categoria: CategoriaModel,
+    proveedor: ProveedorModel,
+  ) -> Producto:
+    moneda_entidad = Moneda(id=moneda.id, nombre=moneda.nombre)
 
     precio = Precio(
-      valor=float(registro["precio_valor"]),
-      moneda=moneda,
-      fecha=datetime.date.fromisoformat(registro["precio_fecha"]),
+      valor=producto.precio_valor,
+      moneda=moneda_entidad,
+      fecha=producto.precio_fecha,
     )
 
-    categoria = Categoria(
-      id=int(registro["categoria_id"]),
-      nombre=registro["categoria_nombre"],
+    categoria_entidad = Categoria(
+      id=categoria.id,
+      nombre=categoria.nombre,
     )
 
-    proveedor = Proveedor(
-      id=int(registro["proveedor_id"]),
-      nombre=registro["proveedor_nombre"],
-      contacto=registro["proveedor_contacto"],
+    proveedor_entidad = Proveedor(
+      id=proveedor.id,
+      nombre=proveedor.nombre,
+      contacto=proveedor.contacto,
     )
 
     return Producto(
-      id=int(registro["id"]),
-      nombre=registro["nombre"],
-      descripcion=registro["descripcion"],
+      id=producto.id,
+      nombre=producto.nombre,
+      descripcion=producto.descripcion,
       precio=precio,
-      categoria=categoria,
-      proveedor=proveedor,
+      categoria=categoria_entidad,
+      proveedor=proveedor_entidad,
     )
+
+  def leer_por_id(self, id: int) -> Optional[Producto]:
+    with obtener_sesion() as session:
+      producto = session.get(ProductoModel, id)
+
+      if producto is None:
+        return None
+
+      moneda = session.get(MonedaModel, producto.moneda_id)
+      categoria = session.get(CategoriaModel, producto.categoria_id)
+      proveedor = session.get(ProveedorModel, producto.proveedor_id)
+
+      return self._convertir_a_entidad(
+        producto,
+        moneda,
+        categoria,
+        proveedor,
+      )
+
+  def leer_todos(self) -> List[Producto]:
+    with obtener_sesion() as session:
+      productos = session.query(ProductoModel).all()
+      resultado = []
+
+      for producto in productos:
+        moneda = session.get(MonedaModel, producto.moneda_id)
+        categoria = session.get(CategoriaModel, producto.categoria_id)
+        proveedor = session.get(ProveedorModel, producto.proveedor_id)
+
+        resultado.append(
+          self._convertir_a_entidad(
+            producto,
+            moneda,
+            categoria,
+            proveedor,
+          )
+        )
+
+      return resultado
+
+  def actualizar(self, producto: Producto) -> Producto:
+    with obtener_sesion() as session:
+      model = session.get(ProductoModel, producto.id)
+
+      if model is None:
+        raise ValueError("No existe una entidad con ese ID.")
+
+      model.nombre = producto.nombre
+      model.descripcion = producto.descripcion
+      model.precio_valor = producto.precio.valor
+      model.precio_fecha = producto.precio.fecha
+      model.moneda_id = producto.precio.moneda.id
+      model.categoria_id = producto.categoria.id
+      model.proveedor_id = producto.proveedor.id
+
+    return producto
+
+  def eliminar(self, id: int) -> bool:
+    with obtener_sesion() as session:
+      model = session.get(ProductoModel, id)
+
+      if model is None:
+        return False
+
+      session.delete(model)
+      return True
 
 
 class RepositorioStock:
-  """Repositorio CSV para stock."""
-
-  ruta_base = "/content/price_manager/src/price_manager/migrations/csv"
-
-  def __init__(self):
-    self.archivo = os.path.join(self.ruta_base, "stock.csv")
-    self.campos = [
-      "producto_id",
-      "producto_nombre",
-      "producto_descripcion",
-      "cantidad",
-    ]
-    os.makedirs(self.ruta_base, exist_ok=True)
-
-  def leer_archivo(self) -> List[dict]:
-    try:
-      with open(self.archivo, mode="r", newline="", encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-    except FileNotFoundError:
-      return []
-
-  def grabar_archivo(self, registros: List[dict]) -> None:
-    with open(self.archivo, mode="w", newline="", encoding="utf-8") as f:
-      writer = csv.DictWriter(f, fieldnames=self.campos)
-      writer.writeheader()
-      writer.writerows(registros)
-
-  def convertir_a_dict(self, stock: Stock) -> dict:
-    return {
-      "producto_id": stock.producto.id,
-      "producto_nombre": stock.producto.nombre,
-      "producto_descripcion": stock.producto.descripcion,
-      "cantidad": stock.cantidad,
-    }
-
-  def convertir_a_entidad(self, registro: dict) -> Stock:
-    producto = Producto(
-      id=int(registro["producto_id"]),
-      nombre=registro["producto_nombre"],
-      descripcion=registro["producto_descripcion"],
-      precio=None,
-      categoria=None,
-      proveedor=None,
-    )
-
-    return Stock(
-      producto=producto,
-      cantidad=int(registro["cantidad"]),
-    )
+  """Repositorio SQLAlchemy para stock."""
 
   def crear(self, stock: Stock) -> Stock:
-    registros = self.leer_archivo()
-
-    for registro in registros:
-      if int(registro["producto_id"]) == stock.producto.id:
-        raise ValueError("Ya existe stock para ese producto.")
-
-    registros.append(self.convertir_a_dict(stock))
-    self.grabar_archivo(registros)
-
+    with obtener_sesion() as session:
+      model = StockModel(
+        producto_id=stock.producto.id,
+        cantidad=stock.cantidad,
+      )
+      session.add(model)
     return stock
 
   def leer_por_producto(self, producto_id: int) -> Optional[Stock]:
-    registros = self.leer_archivo()
+    with obtener_sesion() as session:
+      stock = session.get(StockModel, producto_id)
 
-    for registro in registros:
-      if int(registro["producto_id"]) == producto_id:
-        return self.convertir_a_entidad(registro)
+      if stock is None:
+        return None
 
-    return None
+      producto = session.get(ProductoModel, producto_id)
+
+      producto_entidad = Producto(
+        id=producto.id,
+        nombre=producto.nombre,
+        descripcion=producto.descripcion,
+        precio=None,
+        categoria=None,
+        proveedor=None,
+      )
+
+      return Stock(
+        producto=producto_entidad,
+        cantidad=stock.cantidad,
+      )
 
   def actualizar(self, stock: Stock) -> Stock:
-    registros = self.leer_archivo()
-    encontrado = False
+    with obtener_sesion() as session:
+      model = session.get(StockModel, stock.producto.id)
 
-    for indice, registro in enumerate(registros):
-      if int(registro["producto_id"]) == stock.producto.id:
-        registros[indice] = self.convertir_a_dict(stock)
-        encontrado = True
-        break
+      if model is None:
+        raise ValueError("No existe stock para ese producto.")
 
-    if not encontrado:
-      raise ValueError("No existe stock para ese producto.")
-
-    self.grabar_archivo(registros)
+      model.cantidad = stock.cantidad
 
     return stock
 
   def eliminar(self, producto_id: int) -> bool:
-    registros = self.leer_archivo()
-    filtrados = [
-      registro for registro in registros
-      if int(registro["producto_id"]) != producto_id
-    ]
+    with obtener_sesion() as session:
+      model = session.get(StockModel, producto_id)
 
-    if len(registros) == len(filtrados):
-      return False
+      if model is None:
+        return False
 
-    self.grabar_archivo(filtrados)
-
-    return True
+      session.delete(model)
+      return True
 
 
 class RepositorioCotizacionDolar:
-  """Repositorio CSV para cotizaciones del dólar."""
-
-  ruta_base = "/content/price_manager/src/price_manager/migrations/csv"
-
-  def __init__(self):
-    self.archivo = os.path.join(self.ruta_base, "cotizaciones.csv")
-    self.campos = ["valor", "fecha", "tipo_id", "tipo_nombre"]
-    os.makedirs(self.ruta_base, exist_ok=True)
-
-  def leer_archivo(self) -> List[dict]:
-    try:
-      with open(self.archivo, mode="r", newline="", encoding="utf-8") as f:
-        return list(csv.DictReader(f))
-    except FileNotFoundError:
-      return []
-
-  def grabar_archivo(self, registros: List[dict]) -> None:
-    with open(self.archivo, mode="w", newline="", encoding="utf-8") as f:
-      writer = csv.DictWriter(f, fieldnames=self.campos)
-      writer.writeheader()
-      writer.writerows(registros)
-
-  def convertir_a_dict(self, cotizacion: CotizacionDolar) -> dict:
-    return {
-      "valor": cotizacion.valor,
-      "fecha": cotizacion.fecha.isoformat(),
-      "tipo_id": cotizacion.tipo.id,
-      "tipo_nombre": cotizacion.tipo.nombre,
-    }
-
-  def convertir_a_entidad(self, registro: dict) -> CotizacionDolar:
-    tipo = TipoCotizacion(
-      id=int(registro["tipo_id"]),
-      nombre=registro["tipo_nombre"],
-    )
-
-    return CotizacionDolar(
-      valor=float(registro["valor"]),
-      fecha=datetime.date.fromisoformat(registro["fecha"]),
-      tipo=tipo,
-    )
+  """Repositorio SQLAlchemy para cotizaciones del dólar."""
 
   def crear(self, cotizacion: CotizacionDolar) -> CotizacionDolar:
-    registros = self.leer_archivo()
-
-    for registro in registros:
-      misma_fecha = registro["fecha"] == cotizacion.fecha.isoformat()
-      mismo_tipo = int(registro["tipo_id"]) == cotizacion.tipo.id
-
-      if misma_fecha and mismo_tipo:
-        raise ValueError(
-          "Ya existe una cotización para ese tipo y fecha."
-        )
-
-    registros.append(self.convertir_a_dict(cotizacion))
-    self.grabar_archivo(registros)
-
+    with obtener_sesion() as session:
+      model = CotizacionDolarModel(
+        valor=cotizacion.valor,
+        fecha=cotizacion.fecha,
+        tipo_id=cotizacion.tipo.id,
+      )
+      session.add(model)
     return cotizacion
 
   def leer_por_tipo_y_fecha(
@@ -455,66 +382,80 @@ class RepositorioCotizacionDolar:
     tipo_id: int,
     fecha: datetime.date,
   ) -> Optional[CotizacionDolar]:
-    registros = self.leer_archivo()
+    with obtener_sesion() as session:
+      model = (
+        session.query(CotizacionDolarModel)
+        .filter(
+          CotizacionDolarModel.tipo_id == tipo_id,
+          CotizacionDolarModel.fecha == fecha,
+        )
+        .first()
+      )
 
-    for registro in registros:
-      misma_fecha = registro["fecha"] == fecha.isoformat()
-      mismo_tipo = int(registro["tipo_id"]) == tipo_id
+      if model is None:
+        return None
 
-      if misma_fecha and mismo_tipo:
-        return self.convertir_a_entidad(registro)
+      tipo = session.get(TipoCotizacionModel, model.tipo_id)
 
-    return None
+      return CotizacionDolar(
+        valor=model.valor,
+        fecha=model.fecha,
+        tipo=TipoCotizacion(id=tipo.id, nombre=tipo.nombre),
+      )
 
   def leer_historico_por_tipo(
     self,
     tipo_id: int,
   ) -> List[CotizacionDolar]:
-    return [
-      self.convertir_a_entidad(registro)
-      for registro in self.leer_archivo()
-      if int(registro["tipo_id"]) == tipo_id
-    ]
-
-  def actualizar(
-    self,
-    cotizacion: CotizacionDolar,
-  ) -> CotizacionDolar:
-    registros = self.leer_archivo()
-    encontrado = False
-
-    for indice, registro in enumerate(registros):
-      misma_fecha = registro["fecha"] == cotizacion.fecha.isoformat()
-      mismo_tipo = int(registro["tipo_id"]) == cotizacion.tipo.id
-
-      if misma_fecha and mismo_tipo:
-        registros[indice] = self.convertir_a_dict(cotizacion)
-        encontrado = True
-        break
-
-    if not encontrado:
-      raise ValueError(
-        "No existe cotización para ese tipo y fecha."
+    with obtener_sesion() as session:
+      modelos = (
+        session.query(CotizacionDolarModel)
+        .filter(CotizacionDolarModel.tipo_id == tipo_id)
+        .all()
       )
 
-    self.grabar_archivo(registros)
+      tipo = session.get(TipoCotizacionModel, tipo_id)
+
+      return [
+        CotizacionDolar(
+          valor=m.valor,
+          fecha=m.fecha,
+          tipo=TipoCotizacion(id=tipo.id, nombre=tipo.nombre),
+        )
+        for m in modelos
+      ]
+
+  def actualizar(self, cotizacion: CotizacionDolar) -> CotizacionDolar:
+    with obtener_sesion() as session:
+      model = (
+        session.query(CotizacionDolarModel)
+        .filter(
+          CotizacionDolarModel.tipo_id == cotizacion.tipo.id,
+          CotizacionDolarModel.fecha == cotizacion.fecha,
+        )
+        .first()
+      )
+
+      if model is None:
+        raise ValueError("No existe cotización para ese tipo y fecha.")
+
+      model.valor = cotizacion.valor
 
     return cotizacion
 
   def eliminar(self, tipo_id: int, fecha: datetime.date) -> bool:
-    registros = self.leer_archivo()
-
-    filtrados = [
-      registro for registro in registros
-      if not (
-        int(registro["tipo_id"]) == tipo_id
-        and registro["fecha"] == fecha.isoformat()
+    with obtener_sesion() as session:
+      model = (
+        session.query(CotizacionDolarModel)
+        .filter(
+          CotizacionDolarModel.tipo_id == tipo_id,
+          CotizacionDolarModel.fecha == fecha,
+        )
+        .first()
       )
-    ]
 
-    if len(registros) == len(filtrados):
-      return False
+      if model is None:
+        return False
 
-    self.grabar_archivo(filtrados)
-
-    return True
+      session.delete(model)
+      return True
