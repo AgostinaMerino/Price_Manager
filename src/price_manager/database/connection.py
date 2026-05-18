@@ -30,3 +30,27 @@ class ConexionDB:
   def obtener_engine(self):
     """Devuelve el engine de SQLAlchemy."""
     return self.engine
+
+
+from contextlib import contextmanager
+from typing import Generator
+
+from sqlalchemy.orm import Session
+
+
+@contextmanager
+def obtener_sesion() -> Generator[Session, None, None]:
+  """Administra sesiones transaccionales."""
+
+  session = SessionLocal()
+
+  try:
+    yield session
+    session.commit()
+
+  except Exception:
+    session.rollback()
+    raise
+
+  finally:
+    session.close()
