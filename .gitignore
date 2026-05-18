@@ -2,3 +2,8 @@
 
 __pycache__/
 *.pyc
+
+price_manager.db
+price_manager/
+src/price_manager/migrations/csv/
+src/price_manager/migrations/sql/
