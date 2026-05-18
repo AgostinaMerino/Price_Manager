@@ -1,6 +1,9 @@
-
 import datetime
+import os
 from typing import List, Optional
+
+import requests
+from dotenv import load_dotenv
 
 from price_manager.entities.entities import (
   Categoria,
@@ -20,6 +23,9 @@ from price_manager.repositories.repositories import (
   RepositorioStock,
   RepositorioTipoCotizacion,
 )
+
+
+load_dotenv("/content/price_manager/.env")
 
 
 class ServicioBase:
@@ -260,3 +266,60 @@ class ServicioCotizacionDolar:
       raise ValueError("No existe cotización para ese tipo y fecha.")
 
     return True
+
+  def _obtener_tipo_por_nombre(
+    self,
+    nombre: str,
+  ) -> TipoCotizacion:
+    tipos = self.tipo_servicio.listar_todos()
+
+    for tipo in tipos:
+      if tipo.nombre.lower() == nombre.lower():
+        return tipo
+
+    nuevo_id = max([tipo.id for tipo in tipos], default=0) + 1
+    nuevo_tipo = TipoCotizacion(nuevo_id, nombre)
+    self.tipo_servicio.crear(nuevo_tipo)
+
+    return nuevo_tipo
+
+  def obtener_cotizaciones(self) -> List[CotizacionDolar]:
+    """Obtiene cotizaciones desde API y las registra en la base."""
+
+    api_url = os.getenv("API_URL")
+
+    if api_url is None:
+      raise ValueError("No se encontró API_URL en el archivo .env.")
+
+    respuesta = requests.get(api_url, timeout=10)
+    respuesta.raise_for_status()
+
+    datos = respuesta.json()
+    cotizaciones = []
+    fecha = datetime.date.today()
+
+    for item in datos:
+      nombre_tipo = item.get("nombre", item.get("casa", "Sin nombre"))
+      valor = item.get("venta", item.get("compra"))
+
+      if valor is None:
+        continue
+
+      tipo = self._obtener_tipo_por_nombre(nombre_tipo)
+
+      cotizacion = CotizacionDolar(
+        valor=float(valor),
+        fecha=fecha,
+        tipo=tipo,
+      )
+
+      existente = self.leer(tipo.id, fecha)
+
+      if existente is None:
+        self.registrar_cotizacion(cotizacion)
+      else:
+        self.actualizar(cotizacion)
+
+      cotizaciones.append(cotizacion)
+
+    return cotizaciones
