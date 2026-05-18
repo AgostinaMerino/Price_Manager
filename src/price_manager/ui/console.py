@@ -1,4 +1,3 @@
-
 import datetime
 
 from IPython.display import clear_output
@@ -21,6 +20,7 @@ from price_manager.repositories.repositories import (
   RepositorioStock,
   RepositorioTipoCotizacion,
 )
+from price_manager.services.export_service import ServicioExportacion
 from price_manager.services.services import (
   ServicioCategoria,
   ServicioCotizacionDolar,
@@ -132,6 +132,7 @@ srv_cotizacion = ServicioCotizacionDolar(
   repo_cotizacion,
   srv_tipo,
 )
+srv_exportacion = ServicioExportacion()
 
 
 def menu_inicio() -> str:
@@ -157,10 +158,14 @@ def menu_entidades() -> str:
   print("5 - Productos")
   print("6 - Stock")
   print("7 - Cotización dólar")
-  print("8 - Salir")
+  print("8 - Obtener cotizaciones por API")
+  print("9 - Ver lista de precios bimonetaria")
+  print("10 - Exportar precios a CSV")
+  print("11 - Salir")
 
   return leer_opcion("\nSeleccione una opción: ", [
-    "1", "2", "3", "4", "5", "6", "7", "8"
+    "1", "2", "3", "4", "5", "6",
+    "7", "8", "9", "10", "11",
   ])
 
 
@@ -468,6 +473,72 @@ def ejecutar_cotizaciones() -> None:
     pausar()
 
 
+def ejecutar_api_cotizaciones() -> None:
+  """Obtiene cotizaciones desde API y las guarda en la base."""
+  cotizaciones = srv_cotizacion.obtener_cotizaciones()
+
+  print("Cotizaciones obtenidas y registradas:")
+
+  for cotizacion in cotizaciones:
+    print(
+      cotizacion.tipo.nombre,
+      cotizacion.valor,
+      cotizacion.fecha,
+    )
+
+
+def mostrar_lista_bimonetaria() -> None:
+  """Muestra precios en moneda original y en otra moneda."""
+
+  moneda_destino = leer_texto("Ingrese moneda destino: ").upper()
+  cotizacion = leer_float("Ingrese cotización de referencia: ")
+
+  productos = srv_producto.listar_todos()
+
+  print("\nLista bimonetaria:\n")
+
+  for producto in productos:
+    precio_original = producto.precio.valor
+    moneda_original = producto.precio.moneda.nombre
+
+    if moneda_original == moneda_destino:
+      precio_convertido = precio_original
+
+    elif moneda_original == "ARS" and moneda_destino != "ARS":
+      precio_convertido = precio_original / cotizacion
+
+    elif moneda_original != "ARS" and moneda_destino == "ARS":
+      precio_convertido = precio_original * cotizacion
+
+    else:
+      precio_convertido = precio_original
+
+    print(
+      f"{producto.id} - {producto.nombre} | "
+      f"{precio_original:.2f} {moneda_original} | "
+      f"{precio_convertido:.2f} {moneda_destino}"
+    )
+
+
+def exportar_precios_csv() -> None:
+  """Exporta la lista de precios a un archivo CSV."""
+
+  productos = srv_producto.listar_todos()
+
+  ruta_archivo = (
+    "/content/price_manager/"
+    "exports/precios_productos.csv"
+  )
+
+  srv_exportacion.exportar_productos(
+    productos,
+    ruta_archivo,
+  )
+
+  print("Archivo CSV exportado correctamente.")
+  print(ruta_archivo)
+
+
 def main() -> None:
   """Ejecuta el menú principal del sistema."""
   while True:
@@ -480,7 +551,7 @@ def main() -> None:
     while True:
       opcion = menu_entidades()
 
-      if opcion == "8":
+      if opcion == "11":
         break
 
       if opcion == "1":
@@ -497,3 +568,12 @@ def main() -> None:
         ejecutar_stock()
       elif opcion == "7":
         ejecutar_cotizaciones()
+      elif opcion == "8":
+        ejecutar_api_cotizaciones()
+        pausar()
+      elif opcion == "9":
+        mostrar_lista_bimonetaria()
+        pausar()
+      elif opcion == "10":
+        exportar_precios_csv()
+        pausar()
